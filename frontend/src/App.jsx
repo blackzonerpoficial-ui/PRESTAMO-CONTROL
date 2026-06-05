@@ -92,7 +92,7 @@ export default function App() {
   const [configWeeklyRate, setConfigWeeklyRate] = useState('');
   const [configMonthlyRate, setConfigMonthlyRate] = useState('');
   const [configCapitalInicial, setConfigCapitalInicial] = useState('0');
-  const [configGoogleClientId, setConfigGoogleClientId] = useState(localStorage.getItem('google_client_id') || '');
+  const [configGoogleClientId, setConfigGoogleClientId] = useState(localStorage.getItem('google_client_id') || '824652432081-d5jo31a4himfkuhae4i87tdl1pi8hiqq.apps.googleusercontent.com');
   const [configLogoFile, setConfigLogoFile] = useState(null);
   const [configSuccess, setConfigSuccess] = useState('');
 
@@ -163,7 +163,7 @@ export default function App() {
       const initGoogleLogin = () => {
         if (typeof window.google !== 'undefined') {
           window.google.accounts.id.initialize({
-            client_id: configGoogleClientId || "768393527267-3qdtrm01j5e6kflp0e2u1v12345abcd.apps.googleusercontent.com", // Example fallback
+            client_id: configGoogleClientId || "824652432081-d5jo31a4himfkuhae4i87tdl1pi8hiqq.apps.googleusercontent.com",
             callback: handleGoogleLoginCallback
           });
           window.google.accounts.id.renderButton(
