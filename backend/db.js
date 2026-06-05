@@ -3,11 +3,10 @@ import path from 'path';
 import mongoose from 'mongoose';
 
 const DB_JSON_PATH = path.resolve('data/database.json');
-const CONFIG_JSON_PATH = path.resolve('data/config.json');
 
 // Ensure database.json exists with initial structure
 if (!fs.existsSync(DB_JSON_PATH)) {
-  fs.writeFileSync(DB_JSON_PATH, JSON.stringify({ clientes: [], prestamos: [] }, null, 2));
+  fs.writeFileSync(DB_JSON_PATH, JSON.stringify({ clientes: [], prestamos: [], configs: {} }, null, 2));
 }
 
 let isMongo = false;
@@ -16,13 +15,18 @@ let isMongo = false;
 // MongoDB Schema definition
 // ----------------------------------------------------
 const ClientSchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
   name: { type: String, required: true },
-  cedula: { type: String, required: true, unique: true },
+  cedula: { type: String, required: true },
   phone: { type: String, required: true },
   notes: { type: String, default: '' }
 }, { timestamps: true });
 
+// Ensure compound unique index for cedula + userId in MongoDB
+ClientSchema.index({ userId: 1, cedula: 1 }, { unique: true });
+
 const LoanSchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
   client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
   amount: { type: Number, required: true },
   type: { type: String, enum: ['semanal', 'mensual'], required: true },
@@ -41,8 +45,24 @@ const LoanSchema = new mongoose.Schema({
   }]
 }, { timestamps: true });
 
+const ConfigSchema = new mongoose.Schema({
+  userId: { type: String, required: true, unique: true, index: true },
+  nombre_app: { type: String, default: 'Prestamo Control' },
+  logo: { type: String, default: '/assets/logo.png' },
+  colores: {
+    primary: { type: String, default: '#ff3b30' },
+    background: { type: String, default: '#0a0a0c' },
+    card: { type: String, default: '#16161a' },
+    text: { type: String, default: '#ffffff' }
+  },
+  tasa_semanal: { type: Number, default: 20 },
+  tasa_mensual_default: { type: Number, default: 15 },
+  capital_inicial: { type: Number, default: 0 }
+}, { timestamps: true });
+
 let ClientModel;
 let LoanModel;
+let ConfigModel;
 
 export async function initDB() {
   const mongoUri = process.env.MONGO_URI || '';
@@ -53,10 +73,11 @@ export async function initDB() {
       isMongo = true;
       ClientModel = mongoose.model('Client', ClientSchema);
       LoanModel = mongoose.model('Loan', LoanSchema);
+      ConfigModel = mongoose.model('Config', ConfigSchema);
       console.log('¡Conexión a MongoDB establecida con éxito!');
       return;
     } catch (err) {
-      console.warn('Fallo al conectar a MongoDB. Usando base de datos JSON local como fallback. Detalle:', err.message);
+      console.warn('Fallo al conectar a MongoDB. Usando base de datos JSON local. Detalle:', err.message);
     }
   } else {
     console.log('No se especificó MONGO_URI. Usando base de datos JSON local.');
@@ -70,10 +91,12 @@ export async function initDB() {
 function readJsonDb() {
   try {
     const data = fs.readFileSync(DB_JSON_PATH, 'utf-8');
-    return JSON.parse(data);
+    const parsed = JSON.parse(data);
+    if (!parsed.configs) parsed.configs = {};
+    return parsed;
   } catch (err) {
     console.error('Error leyendo JSON DB:', err);
-    return { clientes: [], prestamos: [] };
+    return { clientes: [], prestamos: [], configs: {} };
   }
 }
 
@@ -91,9 +114,6 @@ function generateId() {
 }
 
 // Helper: Calculate Client Risk Level
-// - Buen cliente: paga a tiempo (sin cuotas vencidas y no tiene historial de moras en préstamos activos)
-// - Regular: se atrasa ocasionalmente (tiene o tuvo cuotas pagadas tarde pero no vencidas actualmente, o préstamos pasados con problemas)
-// - Moroso: tiene cuotas vencidas (estado "pendiente" y dueDate en el pasado)
 function computeRiskLevel(clientLoans) {
   if (!clientLoans || clientLoans.length === 0) return 'bueno';
   
@@ -109,7 +129,6 @@ function computeRiskLevel(clientLoans) {
       }
       if (inst.status === 'pagado' && inst.paymentDate) {
         const paymentDate = new Date(inst.paymentDate);
-        // If payment was made more than 3 days after due date, count as late
         if (paymentDate.getTime() - dueDate.getTime() > 3 * 24 * 60 * 60 * 1000) {
           hasLatePayments = true;
         }
@@ -123,40 +142,65 @@ function computeRiskLevel(clientLoans) {
 }
 
 // ----------------------------------------------------
-// Core Database API
+// Core Database API with Multi-User isolation
 // ----------------------------------------------------
 
-export async function getConfig() {
-  try {
-    const configData = fs.readFileSync(CONFIG_JSON_PATH, 'utf-8');
-    return JSON.parse(configData);
-  } catch (err) {
-    console.error('Error leyendo config.json:', err);
-    return {
-      nombre_app: "Prestamo Control",
-      logo: "/assets/logo.png",
-      colores: { primary: "#ff3b30", background: "#000000", card: "#1c1c1e", text: "#ffffff" },
-      tasa_semanal: 20,
-      tasa_mensual_default: 15
-    };
-  }
-}
+const DEFAULT_CONFIG = {
+  nombre_app: "Prestamo Control",
+  logo: "/assets/logo.png",
+  colores: { primary: "#ff3b30", background: "#0a0a0c", card: "#16161a", text: "#ffffff" },
+  tasa_semanal: 20,
+  tasa_mensual_default: 15,
+  capital_inicial: 0
+};
 
-export async function saveConfig(config) {
-  try {
-    fs.writeFileSync(CONFIG_JSON_PATH, JSON.stringify(config, null, 2));
-    return config;
-  } catch (err) {
-    console.error('Error escribiendo config.json:', err);
-    throw err;
-  }
-}
-
-export async function getClientes() {
+export async function getConfig(userId) {
+  if (!userId) return DEFAULT_CONFIG;
   if (isMongo) {
-    const mongoClients = await ClientModel.find().lean();
+    let conf = await ConfigModel.findOne({ userId }).lean();
+    if (!conf) {
+      conf = await ConfigModel.create({ userId, ...DEFAULT_CONFIG });
+    }
+    return {
+      nombre_app: conf.nombre_app,
+      logo: conf.logo,
+      colores: conf.colores,
+      tasa_semanal: conf.tasa_semanal,
+      tasa_mensual_default: conf.tasa_mensual_default,
+      capital_inicial: conf.capital_inicial || 0
+    };
+  } else {
+    const db = readJsonDb();
+    if (!db.configs[userId]) {
+      db.configs[userId] = { ...DEFAULT_CONFIG, userId };
+      writeJsonDb(db);
+    }
+    return db.configs[userId];
+  }
+}
+
+export async function saveConfig(userId, config) {
+  if (!userId) throw new Error('UserId is required');
+  if (isMongo) {
+    const updated = await ConfigModel.findOneAndUpdate(
+      { userId },
+      { $set: config },
+      { new: true, upsert: true }
+    ).lean();
+    return updated;
+  } else {
+    const db = readJsonDb();
+    db.configs[userId] = { ...db.configs[userId], ...config, userId };
+    writeJsonDb(db);
+    return db.configs[userId];
+  }
+}
+
+export async function getClientes(userId) {
+  if (!userId) return [];
+  if (isMongo) {
+    const mongoClients = await ClientModel.find({ userId }).lean();
     const clients = mongoClients.map(c => ({ id: c._id.toString(), ...c }));
-    // Add risk level dynamically
     for (let client of clients) {
       const mongoLoans = await LoanModel.find({ client: client.id }).lean();
       client.riskLevel = computeRiskLevel(mongoLoans);
@@ -164,7 +208,8 @@ export async function getClientes() {
     return clients;
   } else {
     const db = readJsonDb();
-    return db.clientes.map(client => {
+    const userClients = db.clientes.filter(c => c.userId === userId);
+    return userClients.map(client => {
       const clientLoans = db.prestamos.filter(p => p.clientId === client.id);
       return {
         ...client,
@@ -174,10 +219,11 @@ export async function getClientes() {
   }
 }
 
-export async function getClientByCedula(cedula) {
+export async function getClientByCedula(userId, cedula) {
+  if (!userId) return null;
   const cleaned = cedula.replace(/[-\s]/g, '');
   if (isMongo) {
-    const c = await ClientModel.findOne({ cedula: cleaned }).lean();
+    const c = await ClientModel.findOne({ userId, cedula: cleaned }).lean();
     if (!c) return null;
     const client = { id: c._id.toString(), ...c };
     const loans = await LoanModel.find({ client: client.id }).lean();
@@ -186,7 +232,7 @@ export async function getClientByCedula(cedula) {
     return client;
   } else {
     const db = readJsonDb();
-    const c = db.clientes.find(client => client.cedula.replace(/[-\s]/g, '') === cleaned);
+    const c = db.clientes.find(client => client.userId === userId && client.cedula.replace(/[-\s]/g, '') === cleaned);
     if (!c) return null;
     const loans = db.prestamos.filter(p => p.clientId === c.id);
     return {
@@ -197,17 +243,19 @@ export async function getClientByCedula(cedula) {
   }
 }
 
-export async function createClient(clientData) {
+export async function createClient(userId, clientData) {
+  if (!userId) throw new Error('UserId is required');
   const cleanedCedula = clientData.cedula.replace(/[-\s]/g, '');
   
   // Check duplicate
-  const existing = await getClientByCedula(cleanedCedula);
+  const existing = await getClientByCedula(userId, cleanedCedula);
   if (existing) {
     throw new Error('DUPLICATE_CEDULA');
   }
 
   if (isMongo) {
     const newClient = new ClientModel({
+      userId,
       name: clientData.name,
       cedula: cleanedCedula,
       phone: clientData.phone,
@@ -219,6 +267,7 @@ export async function createClient(clientData) {
     const db = readJsonDb();
     const newClient = {
       id: generateId(),
+      userId,
       name: clientData.name,
       cedula: cleanedCedula,
       phone: clientData.phone,
@@ -230,14 +279,15 @@ export async function createClient(clientData) {
   }
 }
 
-export async function updateClientNotes(id, notes) {
+export async function updateClientNotes(userId, id, notes) {
+  if (!userId) throw new Error('UserId is required');
   if (isMongo) {
-    const updated = await ClientModel.findByIdAndUpdate(id, { notes }, { new: true }).lean();
+    const updated = await ClientModel.findOneAndUpdate({ _id: id, userId }, { notes }, { new: true }).lean();
     if (!updated) throw new Error('Client not found');
     return { id: updated._id.toString(), ...updated };
   } else {
     const db = readJsonDb();
-    const idx = db.clientes.findIndex(c => c.id === id);
+    const idx = db.clientes.findIndex(c => c.id === id && c.userId === userId);
     if (idx === -1) throw new Error('Client not found');
     db.clientes[idx].notes = notes;
     writeJsonDb(db);
@@ -245,9 +295,10 @@ export async function updateClientNotes(id, notes) {
   }
 }
 
-export async function getPrestamos() {
+export async function getPrestamos(userId) {
+  if (!userId) return [];
   if (isMongo) {
-    const mongoLoans = await LoanModel.find().populate('client').lean();
+    const mongoLoans = await LoanModel.find({ userId }).populate('client').lean();
     return mongoLoans.map(l => ({
       id: l._id.toString(),
       ...l,
@@ -255,7 +306,8 @@ export async function getPrestamos() {
     }));
   } else {
     const db = readJsonDb();
-    return db.prestamos.map(loan => {
+    const userLoans = db.prestamos.filter(p => p.userId === userId);
+    return userLoans.map(loan => {
       const client = db.clientes.find(c => c.id === loan.clientId);
       return {
         ...loan,
@@ -265,14 +317,15 @@ export async function getPrestamos() {
   }
 }
 
-export async function createLoan(loanData) {
+export async function createLoan(userId, loanData) {
+  if (!userId) throw new Error('UserId is required');
   const { clientId, amount, type, interestRate, installmentsCount } = loanData;
   
   // Calculations
   const interestAmount = amount * (interestRate / 100);
   const totalAmount = amount + interestAmount;
   const rawInstallmentAmount = totalAmount / installmentsCount;
-  const installmentAmount = Math.round(rawInstallmentAmount * 100) / 100; // Round to 2 decimals
+  const installmentAmount = Math.round(rawInstallmentAmount * 100) / 100;
 
   // Generate Installment Schedule
   const installments = [];
@@ -304,6 +357,7 @@ export async function createLoan(loanData) {
 
   if (isMongo) {
     const newLoan = new LoanModel({
+      userId,
       client: clientId,
       amount,
       type,
@@ -316,16 +370,16 @@ export async function createLoan(loanData) {
       installments
     });
     const saved = await newLoan.save();
-    // Populate client
     const populated = await LoanModel.findById(saved._id).populate('client').lean();
     return { id: populated._id.toString(), ...populated, client: { id: populated.client._id.toString(), ...populated.client } };
   } else {
     const db = readJsonDb();
-    const client = db.clientes.find(c => c.id === clientId);
+    const client = db.clientes.find(c => c.id === clientId && c.userId === userId);
     if (!client) throw new Error('Client not found');
 
     const newLoan = {
       id: generateId(),
+      userId,
       clientId,
       amount,
       type,
@@ -344,12 +398,13 @@ export async function createLoan(loanData) {
   }
 }
 
-export async function registerPayment(paymentData) {
+export async function registerPayment(userId, paymentData) {
+  if (!userId) throw new Error('UserId is required');
   const { loanId, installmentNumber, amountPaid } = paymentData;
   const now = new Date();
 
   if (isMongo) {
-    const loanDoc = await LoanModel.findById(loanId);
+    const loanDoc = await LoanModel.findOne({ _id: loanId, userId });
     if (!loanDoc) throw new Error('Loan not found');
 
     const inst = loanDoc.installments.find(i => i.number === installmentNumber);
@@ -376,7 +431,7 @@ export async function registerPayment(paymentData) {
     };
   } else {
     const db = readJsonDb();
-    const loanIdx = db.prestamos.findIndex(p => p.id === loanId);
+    const loanIdx = db.prestamos.findIndex(p => p.id === loanId && p.userId === userId);
     if (loanIdx === -1) throw new Error('Loan not found');
 
     const loan = db.prestamos[loanIdx];
@@ -405,13 +460,17 @@ export async function registerPayment(paymentData) {
   }
 }
 
-export async function getDashboardData() {
-  const clients = await getClientes();
-  const loans = await getPrestamos();
+export async function getDashboardData(userId) {
+  if (!userId) return {};
+  const config = await getConfig(userId);
+  const clients = await getClientes(userId);
+  const loans = await getPrestamos(userId);
 
+  const capitalInicial = config.capital_inicial || 0;
   let totalPrestado = 0;
   let totalCobrado = 0;
   let gananciasInteres = 0;
+  let gananciasEsperadas = 0; // Total interest expected from current active portfolio
   let clientesActivosSet = new Set();
   let clientesMorososSet = new Set();
 
@@ -427,11 +486,15 @@ export async function getDashboardData() {
     }
 
     if (loan.status === 'pendiente') {
+      gananciasEsperadas += loan.interestAmount;
       if (loan.client) {
         clientesActivosSet.add(loan.client.id);
       }
     }
   }
+
+  // Capital disponible = Capital Inicial + Total Cobrado - Total Prestado
+  const capitalDisponible = capitalInicial + totalCobrado - totalPrestado;
 
   // Find delinquent clients (morosos)
   for (const client of clients) {
@@ -444,6 +507,8 @@ export async function getDashboardData() {
     totalPrestado: Math.round(totalPrestado * 100) / 100,
     totalCobrado: Math.round(totalCobrado * 100) / 100,
     gananciasInteres: Math.round(gananciasInteres * 100) / 100,
+    gananciasEsperadas: Math.round(gananciasEsperadas * 100) / 100,
+    capitalDisponible: Math.round(capitalDisponible * 100) / 100,
     clientesActivos: clientesActivosSet.size,
     clientesMorosos: clientesMorososSet.size
   };
