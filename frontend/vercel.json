@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://prestamo-control.onrender.com/api/:path*"
+    },
+    {
+      "source": "/assets/:path*",
+      "destination": "https://prestamo-control.onrender.com/assets/:path*"
+    }
+  ]
+}
