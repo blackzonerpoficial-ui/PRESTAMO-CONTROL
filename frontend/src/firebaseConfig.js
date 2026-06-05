@@ -3,6 +3,7 @@
 // Replace the placeholder values only if you want to change them.
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
+import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCFpIQEw_s0C4iAAYRCTidQ3pi0f4mEiU4",
@@ -16,7 +17,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-// Analytics (optional, safe to ignore if not needed)
+// Analytics (optional)
 let analytics;
 try {
   analytics = getAnalytics(app);
@@ -24,4 +25,7 @@ try {
   console.warn("Firebase Analytics could not be initialized:", e);
 }
 
-export { app, analytics, firebaseConfig };
+// Authentication instance
+const auth = getAuth(app);
+
+export { app, analytics, firebaseConfig, auth };

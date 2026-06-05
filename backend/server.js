@@ -99,21 +99,19 @@ app.post('/api/login', (req, res) => {
   }
 });
 
-// POST /api/auth/google - Authenticate Google Account
-app.post('/api/auth/google', async (req, res) => {
+// POST /api/auth/firebase - Authenticate Firebase ID Token
+app.post('/api/auth/firebase', async (req, res) => {
   const { idToken } = req.body;
   if (!idToken) {
-    return res.status(400).json({ error: 'El Token de Google es requerido' });
+    return res.status(400).json({ error: 'El ID Token es requerido' });
   }
 
   try {
     const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
     if (!googleRes.ok) {
-      return res.status(401).json({ error: 'Token de Google inválido o expirado' });
+      return res.status(401).json({ error: 'Token inválido o expirado' });
     }
-
     const payload = await googleRes.json();
-    
     res.json({
       success: true,
       token: idToken,
@@ -125,10 +123,11 @@ app.post('/api/auth/google', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Error verificando Google Token:', err);
-    res.status(500).json({ error: 'Error interno verificando la cuenta de Google' });
+    console.error('Error verificando Firebase Token:', err);
+    res.status(500).json({ error: 'Error interno verificando el token' });
   }
 });
+
 
 // Apply authentication middleware to all resources
 app.use('/api/config', authMiddleware);

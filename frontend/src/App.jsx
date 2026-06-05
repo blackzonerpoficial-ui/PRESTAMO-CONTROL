@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import './App.css';
 import html2canvas from 'html2canvas';
+import { auth } from "./firebaseConfig";
+
 import {
   LayoutDashboard,
   Users,
@@ -103,10 +105,7 @@ export default function App() {
   const [configWeeklyRate, setConfigWeeklyRate] = useState(config.tasa_semanal);
   const [configMonthlyRate, setConfigMonthlyRate] = useState(config.tasa_mensual_default);
   const [configCapitalInicial, setConfigCapitalInicial] = useState('0');
-const defaultGoogleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID_HERE';
-  const [configGoogleClientId, setConfigGoogleClientId] = useState(
-    localStorage.getItem('google_client_id') || defaultGoogleClientId
-  );
+// Google Client ID is no longer needed with Firebase Auth
   const [configLogoFile, setConfigLogoFile] = useState(null);
   const [configSuccess, setConfigSuccess] = useState('');
 
@@ -223,26 +222,6 @@ const defaultGoogleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || 'YOUR_GO
     }
   };
 
-  // Load Google button in login screen
-  useEffect(() => {
-    if (!token) {
-      const initGoogleLogin = () => {
-        if (typeof window.google !== 'undefined') {
-          window.google.accounts.id.initialize({
-            client_id: configGoogleClientId,
-            callback: handleGoogleLoginCallback
-          });
-          window.google.accounts.id.renderButton(
-            document.getElementById("google-signin-btn"),
-            { theme: "dark", size: "large", width: "100%", text: "signin_with" }
-          );
-        }
-      };
-      const timer = setTimeout(initGoogleLogin, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [token, loginMethod, configGoogleClientId]);
-
   // Handle data reload on login state change
   useEffect(() => {
     if (token) {
@@ -278,32 +257,32 @@ const defaultGoogleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || 'YOUR_GO
     }
   };
 
-  // Google Login Callback
-  const handleGoogleLoginCallback = async (response) => {
+  // Firebase Login Callback
+  const handleFirebaseLogin = async () => {
     setLoginError('');
     try {
-      const res = await fetch('/api/auth/google', {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const idToken = await result.user.getIdToken();
+      // Send token to our backend to get our own JWT
+      const res = await fetch('/api/auth/firebase', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: response.credential })
+        body: JSON.stringify({ idToken })
       });
-      
-      try {
-        const data = await res.json();
-        if (res.ok && data.success) {
-          localStorage.setItem('token', data.token);
-          localStorage.setItem('user_profile', JSON.stringify(data.user));
-          setToken(data.token);
-          setUserProfile(data.user);
-          setCurrentView('dashboard');
-        } else {
-          setLoginError(data.error || 'Autenticación con Google falló');
-        }
-      } catch (jsonErr) {
-        setLoginError('Error de red: La API de Vercel no está enlazada al Backend de Render. ¿Subiste el archivo vercel.json?');
+      const data = await res.json();
+      if (res.ok && data.success) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user_profile', JSON.stringify(data.user));
+        setToken(data.token);
+        setUserProfile(data.user);
+        setCurrentView('dashboard');
+      } else {
+        setLoginError(data.error || 'Error al iniciar sesión con Google');
       }
     } catch (err) {
-      setLoginError('Error conectando con el servidor de autenticación');
+      console.error('Firebase login error:', err);
+      setLoginError('Error al iniciar sesión con Google');
     }
   };
 
@@ -620,7 +599,6 @@ const defaultGoogleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || 'YOUR_GO
     e.preventDefault();
     setConfigSuccess('');
     
-    localStorage.setItem('google_client_id', configGoogleClientId);
     localStorage.setItem('local_app_name', configAppName);
     localStorage.setItem('local_primary_color', configPrimaryColor);
 
@@ -653,7 +631,6 @@ const defaultGoogleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || 'YOUR_GO
   // Handle Login Setup
   const handleSaveLoginSetup = (e) => {
     e.preventDefault();
-    localStorage.setItem('google_client_id', configGoogleClientId);
     localStorage.setItem('local_app_name', configAppName);
     localStorage.setItem('local_primary_color', configPrimaryColor);
     
@@ -755,7 +732,13 @@ const defaultGoogleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || 'YOUR_GO
                 <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-muted)' }}>
                   Accede de manera rápida con tu cuenta de Google. Cada cuenta tendrá sus propios clientes y préstamos de forma independiente.
                 </div>
-                <div id="google-signin-btn" style={{ minHeight: 40, display: 'flex', justifyContent: 'center' }}></div>
+               <button
+                 onClick={handleFirebaseLogin}
+                 className="btn btn-primary"
+                 style={{ width: '100%', padding: '12px', fontSize: '14px' }}
+               >
+                 Iniciar con Google (Firebase)
+               </button>
                 
                 <div style={{ marginTop: 20, padding: 8, background: 'rgba(255,255,255,0.02)', borderRadius: 8, fontSize: 11, color: 'var(--text-muted)' }}>
                   <span>Si el botón de Google muestra un error, haz clic en el engranaje ⚙️ de arriba para configurar tu Client ID o usa el **Acceso Admin** de pruebas.</span>
