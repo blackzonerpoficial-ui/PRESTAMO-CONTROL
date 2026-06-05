@@ -1,0 +1,17 @@
+{
+  "short_name": "PrestamoCtrl",
+  "name": "Prestamo Control - Fintech Loan Manager",
+  "icons": [
+    {
+      "src": "/assets/logo.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#000000",
+  "theme_color": "#ff3b30",
+  "display": "standalone",
+  "orientation": "portrait"
+}

@@ -1,0 +1,12 @@
+{
+  "nombre_app": "Prestamo Control",
+  "logo": "/assets/logo.png",
+  "colores": {
+    "primary": "#ff3b30",
+    "background": "#000000",
+    "card": "#1c1c1e",
+    "text": "#ffffff"
+  },
+  "tasa_semanal": 20,
+  "tasa_mensual_default": 15
+}
