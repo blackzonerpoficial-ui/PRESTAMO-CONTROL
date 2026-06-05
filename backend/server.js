@@ -14,7 +14,8 @@ import {
   registerPayment,
   getDashboardData,
   getConfig,
-  saveConfig
+  saveConfig,
+  getCedulaReport
 } from './db.js';
 
 dotenv.config();
@@ -132,6 +133,24 @@ app.use('/api/clientes', authMiddleware);
 app.use('/api/prestamos', authMiddleware);
 app.use('/api/pagos', authMiddleware);
 app.use('/api/dashboard', authMiddleware);
+app.use('/api/buro', authMiddleware);
+
+// GET /api/buro/:cedula — Buró de crédito interno anónimo
+// Retorna el historial de comportamiento de pago de una cédula
+// a través de TODOS los usuarios del sistema, sin revelar quién prestó ni montos.
+app.get('/api/buro/:cedula', async (req, res) => {
+  try {
+    const { cedula } = req.params;
+    if (!cedula || cedula.length < 5) {
+      return res.status(400).json({ error: 'Cédula inválida' });
+    }
+    const report = await getCedulaReport(cedula);
+    res.json(report);
+  } catch (err) {
+    console.error('Error en consulta de buró:', err);
+    res.status(500).json({ error: 'Error al consultar el buró de crédito' });
+  }
+});
 
 // GET /api/config
 app.get('/api/config', async (req, res) => {

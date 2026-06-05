@@ -101,11 +101,12 @@ export default function App() {
   const [configWeeklyRate, setConfigWeeklyRate] = useState(config.tasa_semanal);
   const [configMonthlyRate, setConfigMonthlyRate] = useState(config.tasa_mensual_default);
   const [configCapitalInicial, setConfigCapitalInicial] = useState('0');
-  const [configGoogleClientId, setConfigGoogleClientId] = useState(localStorage.getItem('google_client_id') || '824652432081-d5jo31a4himfkuhae4i87tdl1pi8hiqq.apps.googleusercontent.com');
+  const [configGoogleClientId, setConfigGoogleClientId] = useState(localStorage.getItem('google_client_id') || '824652432081-0bekf27u622ruja8pv32grkbv9rh6rtj.apps.googleusercontent.com');
   const [configLogoFile, setConfigLogoFile] = useState(null);
   const [configSuccess, setConfigSuccess] = useState('');
 
   const [editingNotes, setEditingNotes] = useState('');
+  const [buroReport, setBuroReport] = useState(null); // Credit bureau cross-user report
   const receiptRef = useRef(null);
 
   // Helper fetch wrapper to inject Bearer token automatically
@@ -232,16 +233,30 @@ export default function App() {
   }, [token]);
 
   // Handle live client search by cédula inside the Add Loan Form
-  const handleLoanClientCedulaChange = (e) => {
+  const handleLoanClientCedulaChange = async (e) => {
     const inputVal = e.target.value;
     setLoanClientCedulaInput(inputVal);
-    
+    setBuroReport(null);
+
     const cleanedInput = inputVal.replace(/[-\s]/g, '');
     if (cleanedInput.length >= 3) {
       const found = clients.find(c => c.cedula.replace(/[-\s]/g, '') === cleanedInput);
       setMatchedClient(found || null);
     } else {
       setMatchedClient(null);
+    }
+
+    // Fetch cross-user credit bureau report when cedula is long enough
+    if (cleanedInput.length >= 5) {
+      try {
+        const res = await authenticatedFetch(`/api/buro/${encodeURIComponent(cleanedInput)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setBuroReport(data);
+        }
+      } catch (_) {
+        // Silent fail — bureau is informational only
+      }
     }
   };
 
@@ -1215,6 +1230,61 @@ export default function App() {
                       🔴 Cédula no registrada en la base de datos. Debes crear el cliente primero.
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ── BURÓ DE CRÉDITO INTERNO ── */}
+              {buroReport && buroReport.found && (
+                <div style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  border: `1px solid ${buroReport.riesgo === 'moroso' ? 'rgba(255,59,48,0.4)' : buroReport.riesgo === 'regular' ? 'rgba(255,159,10,0.4)' : 'rgba(52,199,89,0.4)'}`,
+                  background: buroReport.riesgo === 'moroso' ? 'rgba(255,59,48,0.07)' : buroReport.riesgo === 'regular' ? 'rgba(255,159,10,0.07)' : 'rgba(52,199,89,0.07)',
+                  marginBottom: 4
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>
+                      🏦 Buró de Crédito Interno
+                    </span>
+                    <span style={{
+                      fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20,
+                      background: buroReport.riesgo === 'moroso' ? '#ff3b30' : buroReport.riesgo === 'regular' ? '#ff9f0a' : '#34c759',
+                      color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em'
+                    }}>
+                      {buroReport.riesgo === 'moroso' ? '⚠️ MOROSO' : buroReport.riesgo === 'regular' ? '⚡ ATRASOS' : '✅ BUEN PAGADOR'}
+                    </span>
+                  </div>
+                  {buroReport.prestamosTotal === 0 ? (
+                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                      Esta cédula tiene historial en el sistema pero sin préstamos registrados aún.
+                    </p>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, textAlign: 'center' }}>
+                      <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '8px 4px' }}>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)' }}>{buroReport.prestamosTotal}</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Préstamos</div>
+                      </div>
+                      <div style={{ background: 'rgba(52,199,89,0.1)', borderRadius: 8, padding: '8px 4px' }}>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: '#34c759' }}>{buroReport.alDia}</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Al día</div>
+                      </div>
+                      <div style={{ background: buroReport.enMora > 0 ? 'rgba(255,59,48,0.1)' : 'rgba(255,159,10,0.08)', borderRadius: 8, padding: '8px 4px' }}>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: buroReport.enMora > 0 ? '#ff3b30' : '#ff9f0a' }}>
+                          {buroReport.enMora > 0 ? buroReport.enMora : buroReport.conAtraso}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{buroReport.enMora > 0 ? 'En mora' : 'Con atraso'}</div>
+                      </div>
+                    </div>
+                  )}
+                  <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    ℹ️ Reporte anónimo — no se revela quién prestó ni montos. Tú decides si aprobar.
+                  </p>
+                </div>
+              )}
+
+              {buroReport && !buroReport.found && loanClientCedulaInput.replace(/[-\s]/g, '').length >= 5 && (
+                <div style={{ padding: 10, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+                  🆕 <strong style={{ color: 'var(--text)' }}>Primera vez en el sistema.</strong> Esta cédula no tiene historial en ningún prestamista de la plataforma.
                 </div>
               )}
 

@@ -519,3 +519,83 @@ export async function getDashboardData(userId) {
     clientesMorosos: clientesMorososSet.size
   };
 }
+
+// ----------------------------------------------------
+// BURÓ DE CRÉDITO INTERNO — Consulta cruzada por cédula
+// Retorna solo comportamiento de pago (nunca montos ni quién prestó)
+// ----------------------------------------------------
+export async function getCedulaReport(cedula) {
+  const cleanCedula = (cedula || '').replace(/[-\s]/g, '').toLowerCase();
+  if (!cleanCedula) return { found: false };
+
+  if (isMongo) {
+    const clients = await ClientModel.find({
+      cedula: { $regex: new RegExp('^' + cleanCedula + '$', 'i') }
+    }).lean();
+
+    if (!clients || clients.length === 0) return { found: false };
+
+    const clientIds = clients.map(c => c._id);
+    const loans = await LoanModel.find({ client: { $in: clientIds } }).lean();
+    return buildCreditReport(loans);
+  } else {
+    const raw = JSON.parse(fs.readFileSync(DB_JSON_PATH, 'utf-8'));
+    const allClients = raw.clientes || [];
+    const allLoans = raw.prestamos || [];
+
+    const matchingClients = allClients.filter(c =>
+      (c.cedula || '').replace(/[-\s]/g, '').toLowerCase() === cleanCedula
+    );
+
+    if (matchingClients.length === 0) return { found: false };
+
+    const matchingIds = new Set(matchingClients.map(c => c.id));
+    const clientLoans = allLoans.filter(l => {
+      const cid = typeof l.client === 'object' ? l.client?.id : l.client;
+      return matchingIds.has(cid);
+    });
+
+    return buildCreditReport(clientLoans);
+  }
+}
+
+function buildCreditReport(loans) {
+  if (!loans || loans.length === 0) {
+    return { found: true, prestamosTotal: 0, alDia: 0, conAtraso: 0, enMora: 0, riesgo: 'nuevo' };
+  }
+
+  let alDia = 0;
+  let conAtraso = 0;
+  let enMora = 0;
+  const hoy = new Date();
+
+  for (const loan of loans) {
+    const installments = loan.installments || [];
+    if (loan.status === 'pagado') {
+      const huboAtraso = installments.some(inst =>
+        inst.status === 'pagado' && inst.paymentDate && inst.dueDate &&
+        new Date(inst.paymentDate) > new Date(inst.dueDate)
+      );
+      if (huboAtraso) conAtraso++; else alDia++;
+    } else {
+      const tieneMora = installments.some(inst =>
+        inst.status === 'pendiente' && new Date(inst.dueDate) < hoy
+      );
+      if (tieneMora) enMora++; else alDia++;
+    }
+  }
+
+  let riesgo;
+  if (enMora > 0) riesgo = 'moroso';
+  else if (conAtraso > 0) riesgo = 'regular';
+  else riesgo = 'bueno';
+
+  return {
+    found: true,
+    prestamosTotal: alDia + conAtraso + enMora,
+    alDia,
+    conAtraso,
+    enMora,
+    riesgo
+  };
+}
