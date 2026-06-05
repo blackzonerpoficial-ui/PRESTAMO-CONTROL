@@ -1,7 +1,8 @@
 import './App.css';
 import html2canvas from 'html2canvas';
 import { auth } from "./firebaseConfig";
-
+import React, { useState, useEffect, useRef } from 'react';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import {
   LayoutDashboard,
   Users,
