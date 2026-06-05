@@ -4,6 +4,12 @@ import mongoose from 'mongoose';
 
 const DB_JSON_PATH = path.resolve('data/database.json');
 
+// Ensure parent data directory exists
+const dbDir = path.dirname(DB_JSON_PATH);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
 // Ensure database.json exists with initial structure
 if (!fs.existsSync(DB_JSON_PATH)) {
   fs.writeFileSync(DB_JSON_PATH, JSON.stringify({ clientes: [], prestamos: [], configs: {} }, null, 2));

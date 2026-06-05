@@ -32,9 +32,14 @@ export default function App() {
   
   // App Branding Config
   const [config, setConfig] = useState({
-    nombre_app: 'Prestamo Control',
+    nombre_app: localStorage.getItem('local_app_name') || 'Prestamo Control',
     logo: '/assets/logo.png',
-    colores: { primary: '#ff3b30', background: '#0a0a0c', card: '#16161a', text: '#ffffff' },
+    colores: { 
+      primary: localStorage.getItem('local_primary_color') || '#ff3b30', 
+      background: '#0a0a0c', 
+      card: '#16161a', 
+      text: '#ffffff' 
+    },
     tasa_semanal: 20,
     tasa_mensual_default: 15,
     capital_inicial: 0
@@ -61,6 +66,7 @@ export default function App() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [activeReceipt, setActiveReceipt] = useState(null);
+  const [showLoginSetupModal, setShowLoginSetupModal] = useState(false);
 
   // Local Login Form
   const [username, setUsername] = useState('');
@@ -87,10 +93,10 @@ export default function App() {
   const [showAddLoanModal, setShowAddLoanModal] = useState(false);
 
   // Config Form
-  const [configAppName, setConfigAppName] = useState('');
-  const [configPrimaryColor, setConfigPrimaryColor] = useState('');
-  const [configWeeklyRate, setConfigWeeklyRate] = useState('');
-  const [configMonthlyRate, setConfigMonthlyRate] = useState('');
+  const [configAppName, setConfigAppName] = useState(config.nombre_app);
+  const [configPrimaryColor, setConfigPrimaryColor] = useState(config.colores.primary);
+  const [configWeeklyRate, setConfigWeeklyRate] = useState(config.tasa_semanal);
+  const [configMonthlyRate, setConfigMonthlyRate] = useState(config.tasa_mensual_default);
   const [configCapitalInicial, setConfigCapitalInicial] = useState('0');
   const [configGoogleClientId, setConfigGoogleClientId] = useState(localStorage.getItem('google_client_id') || '824652432081-d5jo31a4himfkuhae4i87tdl1pi8hiqq.apps.googleusercontent.com');
   const [configLogoFile, setConfigLogoFile] = useState(null);
@@ -116,6 +122,11 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setConfig(data);
+        
+        // Sync local storage
+        localStorage.setItem('local_app_name', data.nombre_app);
+        localStorage.setItem('local_primary_color', data.colores?.primary || '#ff3b30');
+
         // Synchronize inputs
         setConfigAppName(data.nombre_app);
         setConfigPrimaryColor(data.colores?.primary || '#ff3b30');
@@ -159,11 +170,10 @@ export default function App() {
   // Load Google button in login screen
   useEffect(() => {
     if (!token) {
-      // Initialize Google OAuth Sign In
       const initGoogleLogin = () => {
         if (typeof window.google !== 'undefined') {
           window.google.accounts.id.initialize({
-            client_id: configGoogleClientId || "824652432081-d5jo31a4himfkuhae4i87tdl1pi8hiqq.apps.googleusercontent.com",
+            client_id: configGoogleClientId,
             callback: handleGoogleLoginCallback
           });
           window.google.accounts.id.renderButton(
@@ -172,8 +182,6 @@ export default function App() {
           );
         }
       };
-      
-      // Delay slightly to ensure script is fully loaded
       const timer = setTimeout(initGoogleLogin, 1000);
       return () => clearTimeout(timer);
     }
@@ -281,7 +289,6 @@ export default function App() {
           setClientFormSuccess('');
         }, 1500);
       } else if (res.status === 409) {
-        // Duplicate Cedula -> Redirect to history
         setClientFormError('¡Cédula duplicada! Cargando historial de cliente...');
         setTimeout(() => {
           setShowAddClientModal(false);
@@ -443,8 +450,10 @@ export default function App() {
     e.preventDefault();
     setConfigSuccess('');
     
-    // Save Google client ID to localStorage for persistence
+    // Persist Google Client ID locally
     localStorage.setItem('google_client_id', configGoogleClientId);
+    localStorage.setItem('local_app_name', configAppName);
+    localStorage.setItem('local_primary_color', configPrimaryColor);
 
     try {
       const res = await authenticatedFetch('/api/config', {
@@ -463,7 +472,7 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setConfig(data);
-        setConfigSuccess('Configuración y Capital guardados correctamente.');
+        setConfigSuccess('Configuración guardada correctamente.');
         setTimeout(() => setConfigSuccess(''), 2500);
         refreshData();
       }
@@ -472,7 +481,27 @@ export default function App() {
     }
   };
 
-  // Logo File upload parser
+  // Handle Login Setup Save (Local Config on Login screen)
+  const handleSaveLoginSetup = (e) => {
+    e.preventDefault();
+    localStorage.setItem('google_client_id', configGoogleClientId);
+    localStorage.setItem('local_app_name', configAppName);
+    localStorage.setItem('local_primary_color', configPrimaryColor);
+    
+    // Update active config state
+    setConfig(prev => ({
+      ...prev,
+      nombre_app: configAppName,
+      colores: { ...prev.colores, primary: configPrimaryColor }
+    }));
+    
+    setShowLoginSetupModal(false);
+    
+    // Reload page to re-initialize Google with new Client ID
+    window.location.reload();
+  };
+
+  // Logo File upload
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -506,6 +535,17 @@ export default function App() {
   if (!token) {
     return (
       <div className="app-container animate-fade-in" style={customStyles}>
+        
+        {/* Floating Setup Gear on Login Screen */}
+        <button 
+          onClick={() => setShowLoginSetupModal(true)} 
+          className="btn-secondary" 
+          style={{ position: 'absolute', top: 16, right: 16, width: 'auto', padding: 8, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.05)' }}
+          title="Configurar credenciales de Google y Branding"
+        >
+          <Settings size={18} />
+        </button>
+
         <div className="login-view">
           <img className="login-logo" src={config.logo || '/assets/logo.png'} alt="Fintech Logo" onError={(e) => {e.target.src = '/assets/logo.png'}} />
           <div className="login-header">
@@ -535,16 +575,14 @@ export default function App() {
             </div>
 
             {loginMethod === 'google' ? (
-              <div style={{ padding: '20px 0', textAlign: 'center' }}>
+              <div style={{ padding: '10px 0', textAlign: 'center' }}>
                 <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-muted)' }}>
                   Accede de manera rápida con tu cuenta de Google. Cada cuenta tendrá sus propios clientes y préstamos de forma independiente.
                 </div>
                 <div id="google-signin-btn" style={{ minHeight: 40 }}></div>
                 
-                {/* Developer Hint if Google Client ID is not configured */}
-                <div style={{ marginTop: 24, padding: 10, background: 'rgba(255,255,255,0.02)', borderRadius: 8, fontSize: 11, color: 'var(--text-muted)' }}>
-                  <span style={{ fontWeight: 'bold', display: 'block', marginBottom: 4 }}>💡 Nota para Desarrolladores:</span>
-                  Puedes configurar tu propio Google Client ID en la pestaña de ajustes tras ingresar con la cuenta "Acceso Admin" de prueba.
+                <div style={{ marginTop: 20, padding: 8, background: 'rgba(255,255,255,0.02)', borderRadius: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+                  <span>Si el botón de Google muestra un error, haz clic en el engranaje ⚙️ de arriba para configurar tu Client ID o usa el **Acceso Admin** de pruebas.</span>
                 </div>
               </div>
             ) : (
@@ -581,6 +619,54 @@ export default function App() {
             FINTECH LOAN MANAGER © 2026
           </div>
         </div>
+
+        {/* SETUP MODAL DIRECTLY FROM LOGIN SCREEN */}
+        {showLoginSetupModal && (
+          <div className="modal-backdrop" onClick={() => setShowLoginSetupModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h2 style={{ margin: 0, fontSize: 18 }}>Configuración Rápida</h2>
+                <button onClick={() => setShowLoginSetupModal(false)} className="btn-secondary" style={{ width: 'auto', padding: '4px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 11 }}>Cerrar</button>
+              </div>
+
+              <form onSubmit={handleSaveLoginSetup} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="form-group">
+                  <label className="form-label">Nombre de tu App</label>
+                  <input 
+                    type="text" 
+                    className="form-control"
+                    value={configAppName}
+                    onChange={(e) => setConfigAppName(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Color Principal</label>
+                  <input 
+                    type="color" 
+                    className="form-control"
+                    style={{ height: 40, cursor: 'pointer', padding: 2 }}
+                    value={configPrimaryColor}
+                    onChange={(e) => setConfigPrimaryColor(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Google Client ID</label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    style={{ fontSize: 11, fontFamily: 'monospace' }}
+                    placeholder="Escribe tu ID de Google aquí..."
+                    value={configGoogleClientId}
+                    onChange={(e) => setConfigGoogleClientId(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary">
+                  Aplicar y Recargar
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -588,7 +674,7 @@ export default function App() {
   return (
     <div className="app-container" style={customStyles}>
       
-      {/* Premium Header with Google Profile Pic */}
+      {/* Premium Header */}
       <header className="app-header">
         <div className="app-brand">
           <img className="app-logo" src={config.logo || '/assets/logo.png'} alt="Logo" onError={(e) => {e.target.src = '/assets/logo.png'}} />
@@ -599,7 +685,7 @@ export default function App() {
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {userProfile && userProfile.picture && (
             <img 
               src={userProfile.picture} 
@@ -623,7 +709,6 @@ export default function App() {
         {currentView === 'dashboard' && (
           <div className="animate-fade-in">
             
-            {/* Header / User Greeting */}
             <div style={{ marginBottom: 20 }}>
               <p className="text-muted" style={{ fontSize: 12, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5 }}>
                 Hola, {userProfile?.name?.split(' ')[0] || 'Administrador'}
@@ -644,8 +729,8 @@ export default function App() {
                 RD$ {dashboardStats.capitalDisponible?.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
               </div>
               <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                <span>Fondo Inicial: RD$ {config.capital_inicial?.toLocaleString()}</span>
-                <span>En Circulación: RD$ {Math.max(0, dashboardStats.totalPrestado - dashboardStats.totalCobrado)?.toLocaleString()}</span>
+                <span>Fondo Inicial: RD$ {parseFloat(config.capital_inicial || 0).toLocaleString()}</span>
+                <span>En Circulación: RD$ {Math.max(0, dashboardStats.totalPrestado - dashboardStats.totalCobrado).toLocaleString()}</span>
               </div>
             </div>
 
@@ -918,6 +1003,26 @@ export default function App() {
         )}
 
       </main>
+
+      {/* Navigation tabs - RENAME TO CONFIGURACION FOR USER CLARITY */}
+      <nav className="nav-bar">
+        <button onClick={() => { setCurrentView('dashboard'); setSelectedClient(null); setSelectedLoan(null); }} className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}>
+          <LayoutDashboard size={20} />
+          <span>Dashboard</span>
+        </button>
+        <button onClick={() => { setCurrentView('clientes'); setSelectedClient(null); setSelectedLoan(null); }} className={`nav-item ${currentView === 'clientes' ? 'active' : ''}`}>
+          <Users size={20} />
+          <span>Clientes</span>
+        </button>
+        <button onClick={() => { setCurrentView('prestamos'); setSelectedClient(null); setSelectedLoan(null); }} className={`nav-item ${currentView === 'prestamos' ? 'active' : ''}`}>
+          <HandCoins size={20} />
+          <span>Préstamos</span>
+        </button>
+        <button onClick={() => { setCurrentView('configuracion'); setSelectedClient(null); setSelectedLoan(null); }} className={`nav-item ${currentView === 'configuracion' ? 'active' : ''}`}>
+          <Settings size={20} />
+          <span>Configuración</span>
+        </button>
+      </nav>
 
       {/* ========================================================================= */}
       {/* MODAL: REGISTRAR CLIENTE */}
