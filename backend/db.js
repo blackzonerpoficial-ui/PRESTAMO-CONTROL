@@ -25,7 +25,8 @@ const ClientSchema = new mongoose.Schema({
   name: { type: String, required: true },
   cedula: { type: String, required: true },
   phone: { type: String, required: true },
-  notes: { type: String, default: '' }
+  notes: { type: String, default: '' },
+  riskTag: { type: String, enum: ['bueno', 'entre_dos', 'malo', ''], default: '' }
 }, { timestamps: true });
 
 // Ensure compound unique index for cedula + userId in MongoDB
@@ -285,21 +286,70 @@ export async function createClient(userId, clientData) {
   }
 }
 
-export async function updateClientNotes(userId, id, notes) {
+export async function updateClient(userId, id, data) {
   if (!userId) throw new Error('UserId is required');
+  const { name, phone, notes, riskTag } = data;
   if (isMongo) {
-    const updated = await ClientModel.findOneAndUpdate({ _id: id, userId }, { notes }, { new: true }).lean();
+    const updateFields = {};
+    if (name !== undefined) updateFields.name = name;
+    if (phone !== undefined) updateFields.phone = phone;
+    if (notes !== undefined) updateFields.notes = notes;
+    if (riskTag !== undefined) updateFields.riskTag = riskTag;
+    const updated = await ClientModel.findOneAndUpdate(
+      { _id: id, userId },
+      { $set: updateFields },
+      { new: true }
+    ).lean();
     if (!updated) throw new Error('Client not found');
     return { id: updated._id.toString(), ...updated };
   } else {
     const db = readJsonDb();
     const idx = db.clientes.findIndex(c => c.id === id && c.userId === userId);
     if (idx === -1) throw new Error('Client not found');
-    db.clientes[idx].notes = notes;
+    if (name !== undefined) db.clientes[idx].name = name;
+    if (phone !== undefined) db.clientes[idx].phone = phone;
+    if (notes !== undefined) db.clientes[idx].notes = notes;
+    if (riskTag !== undefined) db.clientes[idx].riskTag = riskTag;
     writeJsonDb(db);
     return db.clientes[idx];
   }
 }
+
+export async function updateClientNotes(userId, id, notes) {
+  return updateClient(userId, id, { notes });
+}
+
+export async function deleteClient(userId, id) {
+  if (!userId) throw new Error('UserId is required');
+  if (isMongo) {
+    const client = await ClientModel.findOne({ _id: id, userId });
+    if (!client) throw new Error('Client not found');
+    await LoanModel.deleteMany({ client: id });
+    await ClientModel.deleteOne({ _id: id, userId });
+  } else {
+    const db = readJsonDb();
+    const idx = db.clientes.findIndex(c => c.id === id && c.userId === userId);
+    if (idx === -1) throw new Error('Client not found');
+    db.prestamos = db.prestamos.filter(p => p.clientId !== id);
+    db.clientes.splice(idx, 1);
+    writeJsonDb(db);
+  }
+}
+
+export async function deleteLoan(userId, id) {
+  if (!userId) throw new Error('UserId is required');
+  if (isMongo) {
+    const result = await LoanModel.deleteOne({ _id: id, userId });
+    if (result.deletedCount === 0) throw new Error('Loan not found');
+  } else {
+    const db = readJsonDb();
+    const idx = db.prestamos.findIndex(p => p.id === id && p.userId === userId);
+    if (idx === -1) throw new Error('Loan not found');
+    db.prestamos.splice(idx, 1);
+    writeJsonDb(db);
+  }
+}
+
 
 export async function getPrestamos(userId) {
   if (!userId) return [];

@@ -22,7 +22,9 @@ import {
   Landmark,
   ShieldCheck,
   PlusCircle,
-  WifiOff
+  WifiOff,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 
 export default function App() {
@@ -106,7 +108,20 @@ export default function App() {
   const [configSuccess, setConfigSuccess] = useState('');
 
   const [editingNotes, setEditingNotes] = useState('');
-  const [buroReport, setBuroReport] = useState(null); // Credit bureau cross-user report
+  const [buroReport, setBuroReport] = useState(null);
+
+  // Edit Client Modal
+  const [showEditClientModal, setShowEditClientModal] = useState(false);
+  const [editClientName, setEditClientName] = useState('');
+  const [editClientPhone, setEditClientPhone] = useState('');
+  const [editClientNotes, setEditClientNotes] = useState('');
+  const [editClientRiskTag, setEditClientRiskTag] = useState('');
+  const [editClientError, setEditClientError] = useState('');
+
+  // Delete confirmation
+  const [confirmDeleteLoan, setConfirmDeleteLoan] = useState(null);
+  const [confirmDeleteClient, setConfirmDeleteClient] = useState(null);
+
   const receiptRef = useRef(null);
 
   // Helper fetch wrapper to inject Bearer token automatically
@@ -396,6 +411,76 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error updating notes:', err);
+    }
+  };
+
+  // Open edit modal pre-filled with current client data
+  const handleEditClient = (client) => {
+    setEditClientName(client.name || '');
+    setEditClientPhone(client.phone || '');
+    setEditClientNotes(client.notes || '');
+    setEditClientRiskTag(client.riskTag || '');
+    setEditClientError('');
+    setShowEditClientModal(true);
+  };
+
+  // Save edits to a client
+  const handleSaveEditClient = async (e) => {
+    e.preventDefault();
+    setEditClientError('');
+    if (!editClientName || !editClientPhone) {
+      setEditClientError('Nombre y teléfono son obligatorios');
+      return;
+    }
+    try {
+      const res = await authenticatedFetch(`/api/clientes/${selectedClient.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editClientName,
+          phone: editClientPhone,
+          notes: editClientNotes,
+          riskTag: editClientRiskTag
+        })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSelectedClient(prev => ({ ...prev, ...updated }));
+        setShowEditClientModal(false);
+        refreshData();
+      } else {
+        setEditClientError('Error al guardar cambios');
+      }
+    } catch (err) {
+      setEditClientError('Error de red al guardar');
+    }
+  };
+
+  // Delete client (and all their loans)
+  const handleDeleteClient = async (clientId) => {
+    try {
+      const res = await authenticatedFetch(`/api/clientes/${clientId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSelectedClient(null);
+        setConfirmDeleteClient(null);
+        refreshData();
+      }
+    } catch (err) {
+      console.error('Error eliminando cliente:', err);
+    }
+  };
+
+  // Delete a single loan
+  const handleDeleteLoan = async (loanId) => {
+    try {
+      const res = await authenticatedFetch(`/api/prestamos/${loanId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSelectedLoan(null);
+        setConfirmDeleteLoan(null);
+        refreshData();
+      }
+    } catch (err) {
+      console.error('Error eliminando préstamo:', err);
     }
   };
 
@@ -934,19 +1019,42 @@ export default function App() {
                 </div>
               ) : (
                 filteredClientsList.map(client => (
-                  <div key={client.id} className="list-item" onClick={() => {
-                    setSelectedClient(client);
-                    setEditingNotes(client.notes || '');
-                  }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: 'var(--text)' }}>{client.name}</div>
-                      <div className="text-muted" style={{ fontSize: 11 }}>Ced: {client.cedula}</div>
+                  <div key={client.id} className="list-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                      onClick={() => { setSelectedClient(client); setEditingNotes(client.notes || ''); }}>
+                      <div style={{ flex: 1, cursor: 'pointer' }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: 'var(--text)' }}>{client.name}</div>
+                        <div className="text-muted" style={{ fontSize: 11 }}>Ced: {client.cedula} | {client.phone}</div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end', gap: 4 }}>
+                        {/* Manual risk tag badge (priority) or computed risk */}
+                        {client.riskTag ? (
+                          <span style={{
+                            fontSize: 9, padding: '2px 10px', borderRadius: 20, fontWeight: 800,
+                            background: client.riskTag === 'bueno' ? '#34c759' : client.riskTag === 'malo' ? '#ff3b30' : '#ff9f0a',
+                            color: '#fff', textTransform: 'uppercase'
+                          }}>
+                            {client.riskTag === 'entre_dos' ? 'Entre Dos' : client.riskTag}
+                          </span>
+                        ) : (
+                          <span className={`badge badge-risk-${client.riskLevel}`} style={{ fontSize: 9, padding: '2px 8px' }}>
+                            {client.riskLevel}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end', gap: 4 }}>
-                      <span className={`badge badge-risk-${client.riskLevel}`} style={{ fontSize: 9, padding: '2px 8px' }}>
-                        {client.riskLevel}
-                      </span>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{client.phone}</div>
+                    {/* Action buttons row */}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEditClient(client); setSelectedClient(client); }}
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '6px 0', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--text)', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                        <Pencil size={11} /> Editar
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteClient(client); }}
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '6px 0', borderRadius: 8, border: '1px solid rgba(255,59,48,0.25)', background: 'rgba(255,59,48,0.07)', color: '#ff453a', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                        <Trash2 size={11} /> Eliminar
+                      </button>
                     </div>
                   </div>
                 ))
@@ -978,23 +1086,32 @@ export default function App() {
                 </div>
               ) : (
                 loans.map(loan => (
-                  <div key={loan.id} className="list-item" onClick={() => setSelectedLoan(loan)}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: 'var(--text)' }}>{loan.client?.name || 'Cliente'}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        {loan.type === 'semanal' ? 'Semanal' : 'Mensual'} | Tasa: {loan.interestRate}%
+                  <div key={loan.id} className="list-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                      onClick={() => setSelectedLoan(loan)}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: 'var(--text)' }}>{loan.client?.name || 'Cliente'}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {loan.type === 'semanal' ? 'Semanal' : 'Mensual'} | Tasa: {loan.interestRate}%
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end', gap: 4 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>RD$ {formatCurrency(loan.amount)}</div>
+                        <span className={`badge ${loan.status === 'pagado' ? 'badge-status-pagado' : 'badge-status-pendiente'}`} style={{ fontSize: 9, padding: '2px 8px' }}>
+                          {loan.status === 'pagado' ? 'Saldado' : `Resto: RD$ ${formatCurrency(loan.remainingBalance)}`}
+                        </span>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end', gap: 4 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>RD$ {formatCurrency(loan.amount)}</div>
-                      <span className={`badge ${loan.status === 'pagado' ? 'badge-status-pagado' : 'badge-status-pendiente'}`} style={{ fontSize: 9, padding: '2px 8px' }}>
-                        {loan.status === 'pagado' ? 'Saldado' : `Resto: RD$ ${formatCurrency(loan.remainingBalance)}`}
-                      </span>
-                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteLoan(loan); }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '5px 0', borderRadius: 8, border: '1px solid rgba(255,59,48,0.25)', background: 'rgba(255,59,48,0.07)', color: '#ff453a', cursor: 'pointer', fontSize: 11, fontWeight: 600, width: '100%' }}>
+                      <Trash2 size={11} /> Eliminar Préstamo
+                    </button>
                   </div>
                 ))
               )}
             </div>
+
           </div>
         )}
 

@@ -8,9 +8,12 @@ import {
   getClientByCedula,
   createClient,
   getClientes,
+  updateClient,
   updateClientNotes,
+  deleteClient,
   createLoan,
   getPrestamos,
+  deleteLoan,
   registerPayment,
   getDashboardData,
   getConfig,
@@ -263,6 +266,44 @@ app.put('/api/clientes/:id/notes', async (req, res) => {
     res.status(500).json({ error: 'Error al actualizar las notas' });
   }
 });
+
+// PUT /api/clientes/:id — Full client edit (name, phone, notes, riskTag)
+app.put('/api/clientes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, notes, riskTag } = req.body;
+    const updated = await updateClient(req.userId, id, { name, phone, notes, riskTag });
+    res.json(updated);
+  } catch (err) {
+    console.error('Error editando cliente:', err);
+    res.status(500).json({ error: 'Error al editar el cliente' });
+  }
+});
+
+// DELETE /api/clientes/:id — Delete client and all their loans
+app.delete('/api/clientes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await deleteClient(req.userId, id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error eliminando cliente:', err);
+    res.status(500).json({ error: 'Error al eliminar el cliente' });
+  }
+});
+
+// DELETE /api/prestamos/:id — Delete a single loan
+app.delete('/api/prestamos/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await deleteLoan(req.userId, id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error eliminando préstamo:', err);
+    res.status(500).json({ error: 'Error al eliminar el préstamo' });
+  }
+});
+
 
 // GET /api/prestamos
 app.get('/api/prestamos', async (req, res) => {
