@@ -576,6 +576,17 @@ export default function App() {
     }
   };
 
+  // Filtered clients list for the Clients view (by cédula or name search)
+  const filteredClientsList = Array.isArray(clients)
+    ? clients.filter(client => {
+        if (!searchCedula) return true;
+        const q = searchCedula.toLowerCase().replace(/[-\s]/g, '');
+        const name = (client.name || '').toLowerCase();
+        const cedula = (client.cedula || '').replace(/[-\s]/g, '');
+        return name.includes(q) || cedula.includes(q);
+      })
+    : [];
+
   const quickInterest = parseFloat(loanAmount || 0) * (parseFloat(loanInterestRate || 0) / 100);
   const quickTotal = parseFloat(loanAmount || 0) + quickInterest;
   const quickInstallment = quickTotal / parseInt(loanDuration || 1);

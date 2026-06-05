@@ -7,6 +7,10 @@
     {
       "source": "/assets/:path*",
       "destination": "https://prestamo-control.onrender.com/assets/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
