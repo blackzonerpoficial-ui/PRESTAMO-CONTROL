@@ -22,7 +22,7 @@ import {
   Landmark,
   ShieldCheck,
   PlusCircle,
-  FileSpreadsheet
+  WifiOff
 } from 'lucide-react';
 
 export default function App() {
@@ -30,6 +30,7 @@ export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [userProfile, setUserProfile] = useState(JSON.parse(localStorage.getItem('user_profile')) || null);
   const [loginMethod, setLoginMethod] = useState('google'); // 'google' or 'local'
+  const [apiError, setApiError] = useState(''); // Network / Connection Error status
   
   // App Branding Config
   const [config, setConfig] = useState({
@@ -129,22 +130,31 @@ export default function App() {
     try {
       const res = await authenticatedFetch('/api/config');
       if (res.ok) {
-        const data = await res.json();
-        setConfig(data);
-        
-        // Sync local storage
-        localStorage.setItem('local_app_name', data.nombre_app);
-        localStorage.setItem('local_primary_color', data.colores?.primary || '#ff3b30');
+        setApiError(''); // clear error if successful
+        try {
+          const data = await res.json();
+          if (data && typeof data === 'object') {
+            setConfig(data);
+            
+            // Sync local storage
+            localStorage.setItem('local_app_name', data.nombre_app);
+            localStorage.setItem('local_primary_color', data.colores?.primary || '#ff3b30');
 
-        // Synchronize inputs
-        setConfigAppName(data.nombre_app);
-        setConfigPrimaryColor(data.colores?.primary || '#ff3b30');
-        setConfigWeeklyRate(data.tasa_semanal);
-        setConfigMonthlyRate(data.tasa_mensual_default);
-        setConfigCapitalInicial(data.capital_inicial.toString());
+            // Synchronize inputs
+            setConfigAppName(data.nombre_app);
+            setConfigPrimaryColor(data.colores?.primary || '#ff3b30');
+            setConfigWeeklyRate(data.tasa_semanal);
+            setConfigMonthlyRate(data.tasa_mensual_default);
+            setConfigCapitalInicial(data.capital_inicial.toString());
+          }
+        } catch (jsonErr) {
+          setApiError('Error de formato de API. ¿Subiste el archivo vercel.json?');
+        }
+      } else {
+        setApiError('El servidor retornó un error al cargar la configuración.');
       }
     } catch (err) {
-      console.error('Error fetching config:', err);
+      setApiError('No se pudo conectar al servidor. Render puede estar despertando (espera 1 min).');
     }
   };
 
@@ -156,20 +166,38 @@ export default function App() {
 
       const dashRes = await authenticatedFetch('/api/dashboard');
       if (dashRes.ok) {
-        const stats = await dashRes.json();
-        setDashboardStats(stats);
+        try {
+          const stats = await dashRes.json();
+          if (stats && typeof stats === 'object') {
+            setDashboardStats(stats);
+          }
+        } catch (e) {
+          console.error('Error parsing dashboard JSON:', e);
+        }
       }
 
       const clientsRes = await authenticatedFetch('/api/clientes');
       if (clientsRes.ok) {
-        const clientsData = await clientsRes.json();
-        setClients(clientsData);
+        try {
+          const clientsData = await clientsRes.json();
+          if (Array.isArray(clientsData)) {
+            setClients(clientsData);
+          }
+        } catch (e) {
+          console.error('Error parsing clients JSON:', e);
+        }
       }
 
       const loansRes = await authenticatedFetch('/api/prestamos');
       if (loansRes.ok) {
-        const loansData = await loansRes.json();
-        setLoans(loansData);
+        try {
+          const loansData = await loansRes.json();
+          if (Array.isArray(loansData)) {
+            setLoans(loansData);
+          }
+        } catch (e) {
+          console.error('Error parsing loans JSON:', e);
+        }
       }
     } catch (err) {
       console.error('Error refreshing data:', err);
@@ -226,15 +254,20 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken: response.credential })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user_profile', JSON.stringify(data.user));
-        setToken(data.token);
-        setUserProfile(data.user);
-        setCurrentView('dashboard');
-      } else {
-        setLoginError(data.error || 'Autenticación con Google falló');
+      
+      try {
+        const data = await res.json();
+        if (res.ok && data.success) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user_profile', JSON.stringify(data.user));
+          setToken(data.token);
+          setUserProfile(data.user);
+          setCurrentView('dashboard');
+        } else {
+          setLoginError(data.error || 'Autenticación con Google falló');
+        }
+      } catch (jsonErr) {
+        setLoginError('Error de red: La API de Vercel no está enlazada al Backend de Render. ¿Subiste el archivo vercel.json?');
       }
     } catch (err) {
       setLoginError('Error conectando con el servidor de autenticación');
@@ -251,18 +284,23 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user_profile', JSON.stringify(data.user));
-        setToken(data.token);
-        setUserProfile(data.user);
-        setCurrentView('dashboard');
-      } else {
-        setLoginError(data.message || 'Usuario o contraseña incorrectos');
+      
+      try {
+        const data = await res.json();
+        if (res.ok && data.success) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user_profile', JSON.stringify(data.user));
+          setToken(data.token);
+          setUserProfile(data.user);
+          setCurrentView('dashboard');
+        } else {
+          setLoginError(data.message || 'Usuario o contraseña incorrectos');
+        }
+      } catch (jsonErr) {
+        setLoginError('Error de red: Vercel no redirige al Backend. Sube el archivo vercel.json a GitHub.');
       }
     } catch (err) {
-      setLoginError('Error al conectar con el servidor');
+      setLoginError('Error al conectar con el servidor. Render puede estar iniciando.');
     }
   };
 
@@ -698,6 +736,14 @@ export default function App() {
   return (
     <div className="app-container" style={customStyles}>
       
+      {/* Network / Connection Warning Banner */}
+      {apiError && (
+        <div style={{ background: '#ff3b30', color: 'white', padding: '8px 12px', fontSize: 11, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 6, zIndex: 100 }}>
+          <WifiOff size={14} />
+          <span>{apiError}</span>
+        </div>
+      )}
+
       {/* Premium Header */}
       <header className="app-header">
         <div className="app-brand">
@@ -752,7 +798,7 @@ export default function App() {
               <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: -1, color: 'var(--text)' }}>
                 RD$ {formatCurrency(dashboardStats.capitalDisponible)}
               </div>
-              <div style={{ marginTop: 12, display: 'flex', justifyBetween: 'space-between', fontSize: 12, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+              <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
                 <span>Fondo Inicial: RD$ {formatCurrency(config.capital_inicial)}</span>
                 <span>En Circulación: RD$ {formatCurrency(Math.max(0, dashboardStats.totalPrestado - dashboardStats.totalCobrado))}</span>
               </div>
