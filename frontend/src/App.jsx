@@ -21,7 +21,8 @@ import {
   TrendingUp,
   Landmark,
   ShieldCheck,
-  PlusCircle
+  PlusCircle,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export default function App() {
@@ -83,7 +84,8 @@ export default function App() {
   const [showAddClientModal, setShowAddClientModal] = useState(false);
 
   // Add Loan Form
-  const [loanClientId, setLoanClientId] = useState('');
+  const [loanClientCedulaInput, setLoanClientCedulaInput] = useState('');
+  const [matchedClient, setMatchedClient] = useState(null);
   const [loanAmount, setLoanAmount] = useState('');
   const [loanType, setLoanType] = useState('semanal');
   const [loanDuration, setLoanDuration] = useState('4');
@@ -112,6 +114,13 @@ export default function App() {
       'Authorization': `Bearer ${token}`
     };
     return fetch(url, { ...options, headers });
+  };
+
+  // Safe formatting function to prevent NaN/Infinity crashes
+  const formatCurrency = (val) => {
+    const num = parseFloat(val);
+    if (isNaN(num) || !isFinite(num)) return '0.00';
+    return num.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   // Fetch App Configuration
@@ -193,6 +202,20 @@ export default function App() {
       refreshData();
     }
   }, [token]);
+
+  // Handle live client search by cédula inside the Add Loan Form
+  const handleLoanClientCedulaChange = (e) => {
+    const inputVal = e.target.value;
+    setLoanClientCedulaInput(inputVal);
+    
+    const cleanedInput = inputVal.replace(/[-\s]/g, '');
+    if (cleanedInput.length >= 3) {
+      const found = clients.find(c => c.cedula.replace(/[-\s]/g, '') === cleanedInput);
+      setMatchedClient(found || null);
+    } else {
+      setMatchedClient(null);
+    }
+  };
 
   // Google Login Callback
   const handleGoogleLoginCallback = async (response) => {
@@ -340,8 +363,13 @@ export default function App() {
     setLoanFormError('');
     setLoanFormSuccess('');
 
-    if (!loanClientId || !loanAmount || !loanDuration || !loanInterestRate) {
-      setLoanFormError('Por favor complete todos los datos del formulario');
+    if (!matchedClient) {
+      setLoanFormError('Debe ingresar una cédula válida de un cliente registrado');
+      return;
+    }
+
+    if (!loanAmount || !loanDuration || !loanInterestRate) {
+      setLoanFormError('Por favor complete todos los datos del préstamo');
       return;
     }
 
@@ -350,7 +378,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clientId: loanClientId,
+          clientId: matchedClient.id,
           amount: loanAmount,
           type: loanType,
           interestRate: loanInterestRate,
@@ -361,7 +389,8 @@ export default function App() {
       if (res.status === 201) {
         setLoanFormSuccess('¡Préstamo creado con éxito!');
         setLoanAmount('');
-        setLoanClientId('');
+        setLoanClientCedulaInput('');
+        setMatchedClient(null);
         refreshData();
         setTimeout(() => {
           setShowAddLoanModal(false);
@@ -450,7 +479,6 @@ export default function App() {
     e.preventDefault();
     setConfigSuccess('');
     
-    // Persist Google Client ID locally
     localStorage.setItem('google_client_id', configGoogleClientId);
     localStorage.setItem('local_app_name', configAppName);
     localStorage.setItem('local_primary_color', configPrimaryColor);
@@ -481,14 +509,13 @@ export default function App() {
     }
   };
 
-  // Handle Login Setup Save (Local Config on Login screen)
+  // Handle Login Setup
   const handleSaveLoginSetup = (e) => {
     e.preventDefault();
     localStorage.setItem('google_client_id', configGoogleClientId);
     localStorage.setItem('local_app_name', configAppName);
     localStorage.setItem('local_primary_color', configPrimaryColor);
     
-    // Update active config state
     setConfig(prev => ({
       ...prev,
       nombre_app: configAppName,
@@ -496,8 +523,6 @@ export default function App() {
     }));
     
     setShowLoginSetupModal(false);
-    
-    // Reload page to re-initialize Google with new Client ID
     window.location.reload();
   };
 
@@ -513,10 +538,9 @@ export default function App() {
     }
   };
 
-  const filteredClientsList = clients.filter(c => 
-    c.name.toLowerCase().includes(searchCedula.toLowerCase()) || 
-    c.cedula.replace(/[-\s]/g, '').includes(searchCedula.replace(/[-\s]/g, ''))
-  );
+  const quickInterest = parseFloat(loanAmount || 0) * (parseFloat(loanInterestRate || 0) / 100);
+  const quickTotal = parseFloat(loanAmount || 0) + quickInterest;
+  const quickInstallment = quickTotal / parseInt(loanDuration || 1);
 
   const customStyles = {
     '--primary': config.colores?.primary || '#ff3b30',
@@ -554,7 +578,7 @@ export default function App() {
           </div>
 
           <div className="login-card">
-            {loginError && <div style={{ color: '#ff453a', marginBottom: 15, fontSize: 13, fontWeight: 'bold', textAlign: 'center' }}>{loginError}</div>}
+            {loginError && <div style={{ color: '#ff3b30', marginBottom: 15, fontSize: 13, fontWeight: 'bold', textAlign: 'center' }}>{loginError}</div>}
             
             {/* Login Method Toggle */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
@@ -579,7 +603,7 @@ export default function App() {
                 <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-muted)' }}>
                   Accede de manera rápida con tu cuenta de Google. Cada cuenta tendrá sus propios clientes y préstamos de forma independiente.
                 </div>
-                <div id="google-signin-btn" style={{ minHeight: 40 }}></div>
+                <div id="google-signin-btn" style={{ minHeight: 40, display: 'flex', justifyContent: 'center' }}></div>
                 
                 <div style={{ marginTop: 20, padding: 8, background: 'rgba(255,255,255,0.02)', borderRadius: 8, fontSize: 11, color: 'var(--text-muted)' }}>
                   <span>Si el botón de Google muestra un error, haz clic en el engranaje ⚙️ de arriba para configurar tu Client ID o usa el **Acceso Admin** de pruebas.</span>
@@ -679,7 +703,7 @@ export default function App() {
         <div className="app-brand">
           <img className="app-logo" src={config.logo || '/assets/logo.png'} alt="Logo" onError={(e) => {e.target.src = '/assets/logo.png'}} />
           <div>
-            <span className="app-name" style={{ display: 'block' }}>{config.nombre_app}</span>
+            <span className="app-name" style={{ display: 'block', color: 'var(--text)' }}>{config.nombre_app}</span>
             {userProfile && (
               <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>{userProfile.email}</span>
             )}
@@ -713,7 +737,7 @@ export default function App() {
               <p className="text-muted" style={{ fontSize: 12, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5 }}>
                 Hola, {userProfile?.name?.split(' ')[0] || 'Administrador'}
               </p>
-              <h1 style={{ margin: '2px 0 0 0', fontSize: 24 }}>Resumen de Fondos</h1>
+              <h1 style={{ margin: '2px 0 0 0', fontSize: 24, color: 'var(--text)' }}>Resumen de Fondos</h1>
             </div>
 
             {/* Main Bank Capital Card */}
@@ -725,12 +749,12 @@ export default function App() {
                 <Landmark size={18} style={{ color: 'var(--primary)' }} />
                 <span className="stat-label" style={{ color: 'var(--text-muted)' }}>Capital Disponible (Banco)</span>
               </div>
-              <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: -1 }}>
-                RD$ {dashboardStats.capitalDisponible?.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+              <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: -1, color: 'var(--text)' }}>
+                RD$ {formatCurrency(dashboardStats.capitalDisponible)}
               </div>
-              <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                <span>Fondo Inicial: RD$ {parseFloat(config.capital_inicial || 0).toLocaleString()}</span>
-                <span>En Circulación: RD$ {Math.max(0, dashboardStats.totalPrestado - dashboardStats.totalCobrado).toLocaleString()}</span>
+              <div style={{ marginTop: 12, display: 'flex', justifyBetween: 'space-between', fontSize: 12, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                <span>Fondo Inicial: RD$ {formatCurrency(config.capital_inicial)}</span>
+                <span>En Circulación: RD$ {formatCurrency(Math.max(0, dashboardStats.totalPrestado - dashboardStats.totalCobrado))}</span>
               </div>
             </div>
 
@@ -741,14 +765,14 @@ export default function App() {
                   <TrendingUp size={12} style={{ color: 'var(--primary)' }} />
                   Total Prestado
                 </span>
-                <span className="stat-value">RD$ {dashboardStats.totalPrestado?.toLocaleString()}</span>
+                <span className="stat-value" style={{ color: 'var(--text)' }}>RD$ {formatCurrency(dashboardStats.totalPrestado)}</span>
               </div>
               <div className="stat-card">
                 <span className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <CheckCircle2 size={12} style={{ color: 'var(--success)' }} />
                   Total Cobrado
                 </span>
-                <span className="stat-value" style={{ color: 'var(--success)' }}>RD$ {dashboardStats.totalCobrado?.toLocaleString()}</span>
+                <span className="stat-value" style={{ color: 'var(--success)' }}>RD$ {formatCurrency(dashboardStats.totalCobrado)}</span>
               </div>
             </div>
 
@@ -756,11 +780,11 @@ export default function App() {
             <div className="dashboard-stats">
               <div className="stat-card">
                 <span className="stat-label">Intereses Cobrados</span>
-                <span className="stat-value" style={{ color: '#007aff' }}>RD$ {dashboardStats.gananciasInteres?.toLocaleString()}</span>
+                <span className="stat-value" style={{ color: '#007aff' }}>RD$ {formatCurrency(dashboardStats.gananciasInteres)}</span>
               </div>
               <div className="stat-card">
                 <span className="stat-label">Ganancias Esperadas</span>
-                <span className="stat-value" style={{ color: '#ff9500' }}>RD$ {dashboardStats.gananciasEsperadas?.toLocaleString()}</span>
+                <span className="stat-value" style={{ color: '#ff9500' }}>RD$ {formatCurrency(dashboardStats.gananciasEsperadas)}</span>
               </div>
             </div>
 
@@ -768,7 +792,7 @@ export default function App() {
             <div className="dashboard-stats" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <div className="stat-card" style={{ borderLeft: '3px solid var(--success)' }}>
                 <span className="stat-label">Clientes Activos</span>
-                <span className="stat-value" style={{ fontSize: 22 }}>{dashboardStats.clientesActivos}</span>
+                <span className="stat-value" style={{ fontSize: 22, color: 'var(--text)' }}>{dashboardStats.clientesActivos}</span>
               </div>
               <div className="stat-card" style={{ borderLeft: '3px solid var(--danger)' }}>
                 <span className="stat-label">Clientes Morosos</span>
@@ -811,7 +835,7 @@ export default function App() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
                 <p className="text-muted" style={{ fontSize: 12, textTransform: 'uppercase', fontWeight: 600 }}>Gestión de Préstamos</p>
-                <h1 style={{ margin: 0, fontSize: 24 }}>Clientes</h1>
+                <h1 style={{ margin: 0, fontSize: 24, color: 'var(--text)' }}>Clientes</h1>
               </div>
               <button onClick={() => setShowAddClientModal(true)} className="btn btn-primary" style={{ width: 'auto', padding: '8px 12px', borderRadius: 8, fontSize: 12 }}>
                 <Plus size={14} />
@@ -843,7 +867,7 @@ export default function App() {
                     setEditingNotes(client.notes || '');
                   }}>
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{client.name}</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: 'var(--text)' }}>{client.name}</div>
                       <div className="text-muted" style={{ fontSize: 11 }}>Ced: {client.cedula}</div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end', gap: 4 }}>
@@ -867,7 +891,7 @@ export default function App() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
                 <p className="text-muted" style={{ fontSize: 12, textTransform: 'uppercase', fontWeight: 600 }}>Operaciones</p>
-                <h1 style={{ margin: 0, fontSize: 24 }}>Historial Préstamos</h1>
+                <h1 style={{ margin: 0, fontSize: 24, color: 'var(--text)' }}>Historial Préstamos</h1>
               </div>
               <button onClick={() => setShowAddLoanModal(true)} className="btn btn-primary" style={{ width: 'auto', padding: '8px 12px', borderRadius: 8, fontSize: 12 }}>
                 <Plus size={14} />
@@ -884,15 +908,15 @@ export default function App() {
                 loans.map(loan => (
                   <div key={loan.id} className="list-item" onClick={() => setSelectedLoan(loan)}>
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{loan.client?.name || 'Cliente'}</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: 'var(--text)' }}>{loan.client?.name || 'Cliente'}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                         {loan.type === 'semanal' ? 'Semanal' : 'Mensual'} | Tasa: {loan.interestRate}%
                       </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end', gap: 4 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>RD$ {loan.amount?.toLocaleString()}</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>RD$ {formatCurrency(loan.amount)}</div>
                       <span className={`badge ${loan.status === 'pagado' ? 'badge-status-pagado' : 'badge-status-pendiente'}`} style={{ fontSize: 9, padding: '2px 8px' }}>
-                        {loan.status === 'pagado' ? 'Saldado' : `Resto: RD$ ${loan.remainingBalance?.toLocaleString()}`}
+                        {loan.status === 'pagado' ? 'Saldado' : `Resto: RD$ ${formatCurrency(loan.remainingBalance)}`}
                       </span>
                     </div>
                   </div>
@@ -909,7 +933,7 @@ export default function App() {
           <div className="animate-fade-in">
             <div style={{ marginBottom: 16 }}>
               <p className="text-muted" style={{ fontSize: 12, textTransform: 'uppercase', fontWeight: 600 }}>Personalización</p>
-              <h1 style={{ fontSize: 24 }}>Ajustes y Marca</h1>
+              <h1 style={{ fontSize: 24, color: 'var(--text)' }}>Ajustes y Marca</h1>
             </div>
 
             <form onSubmit={handleSaveConfig} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -970,7 +994,7 @@ export default function App() {
                     value={configPrimaryColor}
                     onChange={(e) => setConfigPrimaryColor(e.target.value)}
                   />
-                  <span style={{ fontSize: 13, fontFamily: 'monospace' }}>{configPrimaryColor}</span>
+                  <span style={{ fontSize: 13, fontFamily: 'monospace', color: 'var(--text)' }}>{configPrimaryColor}</span>
                 </div>
               </div>
 
@@ -1004,7 +1028,7 @@ export default function App() {
 
       </main>
 
-      {/* Navigation tabs - RENAME TO CONFIGURACION FOR USER CLARITY */}
+      {/* Navigation tabs */}
       <nav className="nav-bar">
         <button onClick={() => { setCurrentView('dashboard'); setSelectedClient(null); setSelectedLoan(null); }} className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}>
           <LayoutDashboard size={20} />
@@ -1031,12 +1055,12 @@ export default function App() {
         <div className="modal-backdrop" onClick={() => setShowAddClientModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Registrar Cliente</h2>
+              <h2 style={{ margin: 0, fontSize: 18, color: 'var(--text)' }}>Registrar Cliente</h2>
               <button onClick={() => setShowAddClientModal(false)} className="btn-secondary" style={{ width: 'auto', padding: '4px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 11 }}>Cerrar</button>
             </div>
             
             <form onSubmit={handleAddClient} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {clientFormError && <div style={{ color: '#ff453a', fontSize: 12, fontWeight: 'bold' }}>{clientFormError}</div>}
+              {clientFormError && <div style={{ color: '#ff3b30', fontSize: 12, fontWeight: 'bold' }}>{clientFormError}</div>}
               {clientFormSuccess && <div style={{ color: 'var(--success)', fontSize: 12, fontWeight: 'bold' }}>{clientFormSuccess}</div>}
               
               <div className="form-group">
@@ -1091,34 +1115,51 @@ export default function App() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: CREAR PRESTAMO */}
+      {/* MODAL: CREAR PRESTAMO (SMART CÉDULA SEARCH) */}
       {/* ========================================================================= */}
       {showAddLoanModal && (
         <div className="modal-backdrop" onClick={() => setShowAddLoanModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Aprobar Préstamo</h2>
+              <h2 style={{ margin: 0, fontSize: 18, color: 'var(--text)' }}>Aprobar Préstamo</h2>
               <button onClick={() => setShowAddLoanModal(false)} className="btn-secondary" style={{ width: 'auto', padding: '4px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 11 }}>Cerrar</button>
             </div>
 
             <form onSubmit={handleAddLoan} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {loanFormError && <div style={{ color: '#ff453a', fontSize: 12, fontWeight: 'bold' }}>{loanFormError}</div>}
+              {loanFormError && <div style={{ color: '#ff3b30', fontSize: 12, fontWeight: 'bold' }}>{loanFormError}</div>}
               {loanFormSuccess && <div style={{ color: 'var(--success)', fontSize: 12, fontWeight: 'bold' }}>{loanFormSuccess}</div>}
 
+              {/* Input for Client Cédula Search */}
               <div className="form-group">
-                <label className="form-label">Cliente Beneficiario</label>
-                <select
-                  className="form-control form-select"
-                  value={loanClientId}
-                  onChange={(e) => setLoanClientId(e.target.value)}
+                <label className="form-label">Cédula del Cliente</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Introduce la cédula para buscar..."
+                  value={loanClientCedulaInput}
+                  onChange={handleLoanClientCedulaChange}
                   required
-                >
-                  <option value="">-- Seleccionar cliente --</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.cedula})</option>
-                  ))}
-                </select>
+                />
               </div>
+
+              {/* Dynamic matched client result box */}
+              {loanClientCedulaInput && (
+                <div style={{ marginTop: -4, marginBottom: 8 }}>
+                  {matchedClient ? (
+                    <div style={{ padding: 12, background: 'rgba(52, 199, 89, 0.08)', border: '1px solid rgba(52, 199, 89, 0.25)', borderRadius: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 'bold', color: 'var(--success)', textTransform: 'uppercase', marginBottom: 4 }}>🟢 Cliente Encontrado</div>
+                      <div style={{ fontWeight: 'bold', fontSize: 14, color: 'var(--text)' }}>{matchedClient.name}</div>
+                      <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>
+                        Teléfono: {matchedClient.phone} | Riesgo: <span style={{ fontWeight: 'bold', textTransform: 'capitalize' }}>{matchedClient.riskLevel}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ padding: 12, background: 'rgba(255, 59, 48, 0.08)', border: '1px solid rgba(255, 59, 48, 0.25)', borderRadius: 12, color: '#ff453a', fontSize: 12 }}>
+                      🔴 Cédula no registrada en la base de datos. Debes crear el cliente primero.
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="form-group">
                 <label className="form-label">Monto (RD$)</label>
@@ -1186,22 +1227,22 @@ export default function App() {
                 <div className="card animate-fade-in" style={{ backgroundColor: 'rgba(255,255,255,0.02)', padding: 12, marginBottom: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div className="receipt-line">
                     <span className="text-muted" style={{ fontSize: 12 }}>Interés Total:</span>
-                    <span style={{ fontSize: 12, fontWeight: 700 }}>RD$ {quickInterest.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>RD$ {formatCurrency(quickInterest)}</span>
                   </div>
                   <div className="receipt-line">
                     <span className="text-muted" style={{ fontSize: 12 }}>Total a Devolver:</span>
-                    <span style={{ fontSize: 12, fontWeight: 700 }}>RD$ {quickTotal.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>RD$ {formatCurrency(quickTotal)}</span>
                   </div>
                   <div className="receipt-line" style={{ borderTop: '1px solid var(--border)', paddingTop: 6, marginTop: 2 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700 }}>Monto Cuota:</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Monto Cuota:</span>
                     <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--success)' }}>
-                      {loanDuration} cuotas de RD$ {quickInstallment.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                      {loanDuration} cuotas de RD$ {formatCurrency(quickInstallment)}
                     </span>
                   </div>
                 </div>
               )}
 
-              <button type="submit" className="btn btn-primary" style={{ marginTop: 6 }}>
+              <button type="submit" className="btn btn-primary" style={{ marginTop: 6 }} disabled={!matchedClient}>
                 Confirmar Préstamo
               </button>
             </form>
@@ -1218,7 +1259,7 @@ export default function App() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <UserIcon size={18} className="text-muted" />
-                <h2 style={{ margin: 0, fontSize: 18 }}>Perfil del Cliente</h2>
+                <h2 style={{ margin: 0, fontSize: 18, color: 'var(--text)' }}>Perfil del Cliente</h2>
               </div>
               <button onClick={() => setSelectedClient(null)} className="btn-secondary" style={{ width: 'auto', padding: '4px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 11 }}>Cerrar</button>
             </div>
@@ -1226,7 +1267,7 @@ export default function App() {
             <div className="card" style={{ padding: 14, marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 12 }}>
                 <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 700 }}>{selectedClient.name}</h3>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{selectedClient.name}</h3>
                   <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>Cédula: {selectedClient.cedula}</div>
                   <div className="text-muted" style={{ fontSize: 12 }}>Teléfono: {selectedClient.phone}</div>
                 </div>
@@ -1253,7 +1294,7 @@ export default function App() {
               </div>
             </div>
 
-            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Historial de Préstamos</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>Historial de Préstamos</h3>
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
               {(!selectedClient.history || selectedClient.history.length === 0) ? (
                 <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
@@ -1266,11 +1307,11 @@ export default function App() {
                     setSelectedClient(null);
                   }}>
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>RD$ {loan.amount?.toLocaleString()} ({loan.type})</div>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>RD$ {formatCurrency(loan.amount)} ({loan.type})</div>
                       <div className="text-muted" style={{ fontSize: 10 }}>Cuotas: {loan.installmentsCount} | {new Date(loan.createdAt || Date.now()).toLocaleDateString('es-DO')}</div>
                     </div>
                     <span className={`badge ${loan.status === 'pagado' ? 'badge-status-pagado' : 'badge-status-pendiente'}`} style={{ fontSize: 9, padding: '1px 6px' }}>
-                      {loan.status === 'pagado' ? 'PAGADO' : `RD$ ${loan.remainingBalance?.toLocaleString()}`}
+                      {loan.status === 'pagado' ? 'PAGADO' : `RD$ ${formatCurrency(loan.remainingBalance)}`}
                     </span>
                   </div>
                 ))
@@ -1296,7 +1337,7 @@ export default function App() {
                 }} style={{ background: 'none', border: 'none', color: 'var(--text)', marginRight: 4, cursor: 'pointer' }}>
                   <ArrowLeft size={18} />
                 </button>
-                <h2 style={{ margin: 0, fontSize: 18 }}>Amortización</h2>
+                <h2 style={{ margin: 0, fontSize: 18, color: 'var(--text)' }}>Amortización</h2>
               </div>
               <button onClick={() => setSelectedLoan(null)} className="btn-secondary" style={{ width: 'auto', padding: '4px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 11 }}>Cerrar</button>
             </div>
@@ -1304,20 +1345,20 @@ export default function App() {
             <div className="card" style={{ padding: 14, marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div className="receipt-line">
                 <span className="text-muted" style={{ fontSize: 12 }}>Cliente:</span>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>{selectedLoan.client?.name || 'Cliente'}</span>
+                <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{selectedLoan.client?.name || 'Cliente'}</span>
               </div>
               <div className="receipt-line">
                 <span className="text-muted" style={{ fontSize: 12 }}>Monto Inicial:</span>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>RD$ {selectedLoan.amount?.toLocaleString()}</span>
+                <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>RD$ {formatCurrency(selectedLoan.amount)}</span>
               </div>
               <div className="receipt-line">
                 <span className="text-muted" style={{ fontSize: 12 }}>Tipo / Tasa:</span>
-                <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'capitalize' }}>{selectedLoan.type} ({selectedLoan.interestRate}%)</span>
+                <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'capitalize', color: 'var(--text)' }}>{selectedLoan.type} ({selectedLoan.interestRate}%)</span>
               </div>
               <div className="receipt-line" style={{ borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 4 }}>
                 <span className="text-muted" style={{ fontSize: 12 }}>Saldo Restante:</span>
                 <span style={{ fontWeight: 800, fontSize: 14, color: selectedLoan.remainingBalance === 0 ? 'var(--success)' : 'var(--primary)' }}>
-                  RD$ {selectedLoan.remainingBalance?.toLocaleString()}
+                  RD$ {formatCurrency(selectedLoan.remainingBalance)}
                 </span>
               </div>
             </div>
@@ -1335,9 +1376,9 @@ export default function App() {
                 const isOverdue = inst.status === 'pendiente' && new Date(inst.dueDate) < new Date();
                 return (
                   <div key={inst.number} className={`installment-row ${isOverdue ? 'overdue' : ''}`} style={{ gridTemplateColumns: '1fr 2.2fr 2fr 1.8fr' }}>
-                    <span style={{ fontWeight: 600 }}>#{inst.number}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text)' }}>#{inst.number}</span>
                     <span className="text-muted">{new Date(inst.dueDate).toLocaleDateString('es-DO')}</span>
-                    <span style={{ fontWeight: 700 }}>RD$ {inst.amount?.toLocaleString()}</span>
+                    <span style={{ fontWeight: 700, color: 'var(--text)' }}>RD$ {formatCurrency(inst.amount)}</span>
                     
                     {inst.status === 'pagado' ? (
                       <span className="badge badge-status-pagado" style={{ fontSize: 8, padding: '2px 5px' }}>Saldada</span>
@@ -1366,7 +1407,7 @@ export default function App() {
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '95%', display: 'flex', flexDirection: 'column' }}>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h2 style={{ margin: 0, fontSize: 16 }}>Recibo de Pago</h2>
+              <h2 style={{ margin: 0, fontSize: 16, color: 'var(--text)' }}>Recibo de Pago</h2>
               <button onClick={() => setActiveReceipt(null)} className="btn-secondary" style={{ width: 'auto', padding: '4px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 11 }}>Cerrar</button>
             </div>
 
@@ -1400,7 +1441,7 @@ export default function App() {
                 </div>
                 <div className="receipt-line bold" style={{ fontSize: 15 }}>
                   <span>Monto Cobrado:</span>
-                  <span>RD$ {activeReceipt.amountPaid.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                  <span>RD$ {formatCurrency(activeReceipt.amountPaid)}</span>
                 </div>
 
                 <div className="receipt-divider"></div>
@@ -1408,7 +1449,7 @@ export default function App() {
                 <div className="receipt-line bold">
                   <span>Balance Pendiente:</span>
                   <span style={{ color: activeReceipt.remainingBalance === 0 ? 'green' : 'black' }}>
-                    RD$ {activeReceipt.remainingBalance.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                    RD$ {formatCurrency(activeReceipt.remainingBalance)}
                   </span>
                 </div>
 
