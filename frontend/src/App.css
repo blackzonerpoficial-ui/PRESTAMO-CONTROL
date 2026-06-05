@@ -145,7 +145,7 @@ h2 {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
-  background: rgba(var(--card), 0.5);
+  background: var(--glass-bg);
   backdrop-filter: blur(10px);
   z-index: 10;
 }
@@ -554,38 +554,112 @@ h2 {
 }
 
 /* Modal styles (Glassmorphism backdrop) */
-.modal-backdrop {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(5px);
-  display: flex;
-  align-items: flex-end; /* slides up from bottom */
-  justify-content: center;
-  z-index: 200;
-}
 
-.modal-content {
-  width: 100%;
-  background-color: var(--card);
-  border-top: 1px solid var(--border);
-  border-top-left-radius: 32px;
-  border-top-right-radius: 32px;
-  padding: 24px 20px;
-  max-height: 90%;
-  overflow-y: auto;
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
 
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
 
-/* Info pill details */
+/* App.css - Modern premium UI */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+:root {
+  --primary-h: 170;   /* teal hue */
+  --primary-s: 70%;
+  --primary-l: 45%;
+  --accent-h: 270;   /* purple hue */
+  --accent-s: 70%;
+  --accent-l: 55%;
+  --bg: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.12);
+  --radius: 12px;
+  --shadow: 0 8px 32px rgba(0,0,0,0.12);
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, hsl(var(--primary-h) var(--primary-s) var(--primary-l)), hsl(var(--accent-h) var(--accent-s) var(--accent-l)));
+    color: #fff;
+}
+
+.card, .glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.btn {
+  border-radius: var(--radius);
+  transition: transform 0.15s ease, background 0.2s ease;
+  font-weight: 600;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  background: rgba(255,255,255,0.15);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.modal-content {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  border-radius: var(--radius);
+  padding: 24px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: var(--shadow);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+badge-risk-bueno { background: #34c759; color: #fff; }
+badge-risk-malo { background: #ff3b30; color: #fff; }
+badge-risk-entre_dos { background: #ff9f0a; color: #fff; }
+
+/* Override default list items */
+.list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.list-item:hover { background: rgba(255,255,255,0.04); }
+
+/* Adjust input fields */
+.form-control {
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+.form-control::placeholder { color: rgba(255,255,255,0.5); }
+
+/* Header titles */
+h1, h2, h3 { font-weight: 700; color: #fff; }
+
 .info-row {
   display: flex;
   justify-content: space-between;

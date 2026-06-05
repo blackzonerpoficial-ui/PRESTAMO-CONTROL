@@ -103,7 +103,10 @@ export default function App() {
   const [configWeeklyRate, setConfigWeeklyRate] = useState(config.tasa_semanal);
   const [configMonthlyRate, setConfigMonthlyRate] = useState(config.tasa_mensual_default);
   const [configCapitalInicial, setConfigCapitalInicial] = useState('0');
-  const [configGoogleClientId, setConfigGoogleClientId] = useState(localStorage.getItem('google_client_id') || '824652432081-0bekf27u622ruja8pv32grkbv9rh6rtj.apps.googleusercontent.com');
+const defaultGoogleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID_HERE';
+  const [configGoogleClientId, setConfigGoogleClientId] = useState(
+    localStorage.getItem('google_client_id') || defaultGoogleClientId
+  );
   const [configLogoFile, setConfigLogoFile] = useState(null);
   const [configSuccess, setConfigSuccess] = useState('');
 
