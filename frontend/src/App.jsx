@@ -808,17 +808,6 @@ export default function App() {
                     onChange={(e) => setConfigPrimaryColor(e.target.value)}
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Google Client ID</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    style={{ fontSize: 11, fontFamily: 'monospace' }}
-                    placeholder="Escribe tu ID de Google aquí..."
-                    value={configGoogleClientId}
-                    onChange={(e) => setConfigGoogleClientId(e.target.value)}
-                  />
-                </div>
                 <button type="submit" className="btn btn-primary">
                   Aplicar y Recargar
                 </button>
